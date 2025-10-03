@@ -1,76 +1,64 @@
-# -----------------------------
-# Load Data
-# -----------------------------
 import json
-import csv
-import pandas as pd
 from pathlib import Path
-
-from pathlib import Path
-from dataclasses import dataclass
-from logging import Logger
-import pandas as pd
-import xarray as xr
 import numpy as np
-import yaml
-
 
 class DataLoader:
     """
-    Loads energy system input data for a given configuration/question from structured CSV and json files
-    and an auxiliary configuration metadata file.
-    
-    Example usage:
-    open interactive window in VSCode,
-    >>> cd ../../
-    run the script data_loader.py in the interactive window,
-    >>> data = DataLoader(input_path='..')
+    Loads energy system input data from structured JSON files for a given question/scenario.
+
+    Attributes:
+        input_path (Path): Path to the main folder containing 'data' (e.g., template-assignment-1-group-21).
+        question (str): Question/scenario name (e.g., "question_1a").
+        data (dict): Dictionary storing all loaded JSON files by filename stem.
     """
-    question: str
-    input_path: Path
 
-    def __init__(self):
-        """
-        Post-initialization to load and validate all required datasets (placeholder function)
+    def __init__(self, input_path: str | Path, question: str):
+        self.input_path = Path(input_path).resolve()  # main folder containing 'data'
+        self.question = question
+        self.data = {}
 
-        example usage:
-        self.input_path = Path(self.input_path).resolve()
-        
-        # Load metadata (auxiliary scenario data)
-        self.load_aux_data('question1a_scenario1_aux_data.yaml')
-        
-        # Load CSV and json datasets
-        self.data()
-        """
-        pass
+    def load_all_json(self):
+       """
+         Load all JSON files in the specified question folder into self.data.
+     """
+       question_path = self.input_path  # remove extra "data"
+       if not question_path.exists():
+         raise FileNotFoundError(f"Question folder not found: {question_path}")
 
-    def _load_dataset(self, question_name: str):
-        """Helper function to load all CSV or json files, using the appropriate method based on file extension.
-        
-        example usage: 
-        call the load_dataset() function from utils.py to load all files in the input_path directory
-        save all data as class attributes (e.g. self.demand, self.wind, etc.), structured as pandas DataFrames or Series (or other format as prefered)
-        """
-        pass
+    # Load all JSON files
+       for file_path in question_path.glob("*.json"):
+         with open(file_path, "r", encoding="utf-8") as f:
+            self.data[file_path.stem] = json.load(f)
+       return self.data
 
 
-    def _load_data_file(self, question_name: str, file_name: str):
+    def get_consumer(self):
         """
-        Placeholder function 
-        Helper function to load a specific CSV or json file, using the appropriate method based on file extension.. Raises FileNotFoundError if missing.
-        
-        example usage: 
-        define and call a load_data_file() function from utils.py to load a specific file in the input_path directory
-        save all data as class attributes (e.g. self.demand, self.wind, etc.), structured as pandas DataFrames or Series (or other format as prefered)"""
-        pass
+        Returns the first consumer from consumer_params.json.
+        """
+        consumers = self.data.get("consumer_params")
+        if not consumers:
+            raise ValueError("consumer_params.json not loaded")
+        return consumers[0]
 
-    def load_aux_data(self, question_name: str, filename: str):
+    def get_bus(self, bus_id: str):
         """
-        Placeholder Helper function to Load auxiliary metadata for the scenario/question from a YAML/json file or other formats
-        
-        Example application: 
-        define and call a load_aux_data() function from utils.py to load a specific auxiliary file in the input_path directory
-        Save the content as s class attributes, in a dictionary, pd datframe or other: self.aux_data
-        Attach key values as class attributes (flattened).
+        Returns the bus dictionary matching the given bus_id.
         """
-        pass
+        bus_list = self.data.get("bus_params")
+        if not bus_list:
+            raise ValueError("bus_params.json not loaded")
+        bus = next((b for b in bus_list if b["bus_ID"] == bus_id), None)
+        if bus is None:
+            raise ValueError(f"Bus {bus_id} not found in bus_params.json")
+        return bus
+
+    def get_pv_profile(self):
+        """
+        Returns the PV hourly production profile for the first DER in DER_production.json.
+        """
+        der_list = self.data.get("DER_production")
+        if not der_list:
+            raise ValueError("DER_production.json not loaded")
+        return der_list[0]["hourly_profile_ratio"]
+
