@@ -1,7 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import deepcopy
-from src.opt_model.opt_model import OptModel, OptModelFlex, OptModelFlexBattery
+from src.opt_model.opt_model import (
+    OptModel,
+    OptModelFlex,
+    OptModelFlexBattery,
+    OptModelFlexBatteryInvestment
+)
 
 # -------------------------
 # Scenario generators
@@ -21,88 +26,80 @@ def generate_economic_scenarios(base_data, param_name, n_scenarios=4, increase_p
         scenarios.append((f"{param_name}_scenario_{i}", data_scenario))
     return scenarios
 
-
-def generate_flexibility_scenarios(base_data, n_scenarios=8, factor_profile=1.4, factor_maxload=1/1.7):
+def generate_flexibility_scenarios(base_data, n_scenarios=4, factor_profile=1.4):
+    """Generate scenarios by scaling dt only (max load removed)."""
     scenarios = []
-    half = n_scenarios // 2
-
-    # Scale dt
-    for i in range(1, half + 1):
+    for i in range(1, n_scenarios + 1):
+        factor = 1 + (factor_profile - 1) * i / n_scenarios
         data_scenario = deepcopy(base_data)
-        factor = 1 + (factor_profile - 1) * i / half
-        data_scenario["dt"] = [x * factor for x in data_scenario["dt"]]
+        data_scenario["dt"] = [x * factor for x in base_data["dt"]]
         scenarios.append((f"dt_factor_{factor:.3f}", data_scenario))
-
-    # Scale Dhour
-    for i in range(1, half + 1):
-        data_scenario = deepcopy(base_data)
-        factor = 1 - (1 - factor_maxload) * i / half
-        data_scenario["Dhour"] = data_scenario["Dhour"] * factor
-        scenarios.append((f"Dh_max_{data_scenario['Dhour']:.2f}", data_scenario))
-
     return scenarios
 
+def generate_alpha_scenarios(base_data, base_alpha, n_scenarios=4, increase_pct=0.5):
+    """Generate alpha values increasing from base_alpha."""
+    scenarios = []
+    for i in range(1, n_scenarios + 1):
+        alpha_val = base_alpha * (1 + increase_pct * i)
+        scenarios.append((f"alpha_{alpha_val:.2f}", alpha_val))
+    return scenarios
 
 # -------------------------
 # Run scenarios
 # -------------------------
 
-def run_scenarios(scenarios, model_class, alpha=None):
+def run_scenarios(scenarios, model_class, alpha=None, phi=None):
     results = {}
     for name, data in scenarios:
-        if model_class in [OptModelFlex, OptModelFlexBattery]:
-            model = model_class(data, alpha)
+        if model_class is OptModelFlexBatteryInvestment:
+            model = model_class(data, alpha=alpha, phi=phi)
+        elif model_class in [OptModelFlex, OptModelFlexBattery]:
+            model = model_class(data, alpha=alpha)
         else:
             model = model_class(data)
+
         model.run()
         results[name] = deepcopy(model.results)
     return results
 
-
 # -------------------------
-# Helper: pretty labels
+# Helpers
 # -------------------------
 
 def format_label(name):
-    """Create readable labels for scenarios."""
     if "F_E" in name:
         idx = int(name.split("_")[-1])
         factor = 1 + 0.5 * idx
-        return f"Export fee factor = {factor:.2f}"
+        return f"Export fee ×{factor:.2f}"
     elif "F_I" in name:
         idx = int(name.split("_")[-1])
         factor = 1 + 0.5 * idx
-        return f"Import fee factor = {factor:.2f}"
+        return f"Import fee ×{factor:.2f}"
     elif "lambda_t" in name:
         idx = int(name.split("_")[-1])
         factor = 1 + 0.5 * idx
-        return f"Electricity price factor = {factor:.2f}"
+        return f"Price ×{factor:.2f}"
+    elif "alpha" in name:
+        val = float(name.split("_")[-1])
+        return f"α = {val:.1f}"
     elif "dt_factor" in name:
         factor = float(name.split("_")[-1])
-        return f"Reference load factor = {factor:.2f}"
-    elif "Dh_max" in name:
-        value = float(name.split("_")[-1])
-        return f"Max load = {value:.2f} kWh"
+        return f"Load factor = {factor:.2f}"
     else:
         return name
 
-
 def format_group_title(param_name):
-    """Convert scenario group to a human-readable title."""
-    if param_name == "F_E":
-        return "Export Fee Sensitivity"
-    elif param_name == "F_I":
-        return "Import Fee Sensitivity"
-    elif param_name == "lambda_t":
-        return "Electricity Price Sensitivity"
-    elif param_name == "Flexibility":
-        return "Flexibility Sensitivity"
-    else:
-        return param_name
-
+    mapping = {
+        "F_E": "Export Fee Sensitivity",
+        "F_I": "Import Fee Sensitivity",
+        "lambda_t": "Electricity Price Sensitivity",
+        "Flexibility": "Flexibility Sensitivity",
+        "Alpha": "Alpha Sensitivity",
+    }
+    return mapping.get(param_name, param_name)
 
 # -------------------------
-# Plotting functions
+# Plotting
 # -------------------------
 
 def plot_base_case(base_results):
@@ -118,53 +115,56 @@ def plot_base_case(base_results):
     plt.tight_layout()
     plt.show()
 
-
-def plot_scenarios(base_results, scenario_results, scenario_name, show_net_consumption=False):
-    """
-    Plot scenario results.
-    If show_net_consumption=True, only plot total consumption (pt + pI - pE)
-    """
-    plt.figure(figsize=(12, 6))
-    
-    base_consumption = [base_results["pt"][t] + base_results["pI"][t] - base_results["pE"][t] for t in range(24)]
-    
-    if show_net_consumption:
-        plt.plot(base_consumption, '--', color='black', label='Base Consumption')
-        for name, res in scenario_results.items():
-            scenario_consumption = [res["pt"][t] + res["pI"][t] - res["pE"][t] for t in range(24)]
-            plt.plot(scenario_consumption, label=format_label(name))
-        plt.ylabel("Consumption [kWh]")
-        plt.title(f'{format_group_title(scenario_name)}: Net Consumption')
-    else:
-        plt.plot(base_results["pt"], '--', label="Base PV")
-        plt.plot(base_results["pI"], '--', label="Base Import")
-        plt.plot(base_results["pE"], '--', label="Base Export")
-        for name, res in scenario_results.items():
-            plt.plot(res["pt"], label=f"{format_label(name)} PV")
-            plt.plot(res["pI"], label=f"{format_label(name)} Import")
-            plt.plot(res["pE"], label=f"{format_label(name)} Export")
-        plt.ylabel("Power [kW]")
-        plt.title(f"{format_group_title(scenario_name)}")
-    
+def plot_pv_and_consumption_scenarios(base_results, scenario_results, scenario_name, plot_k=False):
+    # PV Production
+    plt.figure(figsize=(10, 5))
+    plt.plot(base_results["pt"], "--", color="black", label="Base PV")
+    for name, res in scenario_results.items():
+        plt.plot(res["pt"], label=format_label(name))
+    plt.title(f"{format_group_title(scenario_name)}: PV Production")
     plt.xlabel("Hour")
-    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.ylabel("PV Power [kW]")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
     plt.grid(True)
     plt.tight_layout()
     plt.show()
 
+    # Net consumption
+    plt.figure(figsize=(10, 5))
+    base_cons = [base_results["pt"][t] + base_results["pI"][t] - base_results["pE"][t] for t in range(24)]
+    plt.plot(base_cons, "--", color="black", label="Base Consumption")
+    for name, res in scenario_results.items():
+        cons = [res["pt"][t] + res["pI"][t] - res["pE"][t] for t in range(24)]
+        plt.plot(cons, label=format_label(name))
+    plt.title(f"{format_group_title(scenario_name)}: Net Consumption")
+    plt.xlabel("Hour")
+    plt.ylabel("Energy [kWh]")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    # Plot battery k if requested
+    if plot_k:
+        plt.figure(figsize=(8, 5))
+        ks = [res["k"] for res in scenario_results.values()]
+        labels = [format_label(name) for name in scenario_results.keys()]
+        plt.bar(labels, ks, color="orange")
+        plt.title(f"{format_group_title(scenario_name)}: Battery Size k")
+        plt.ylabel("k [kWh]")
+        plt.xticks(rotation=30, ha="right")
+        plt.grid(axis="y")
+        plt.tight_layout()
+        plt.show()
 
 def plot_objective_sensitivity(base_results, scenario_results_grouped):
-    """
-    Plot the total cost (objective) sensitivity for all scenario groups.
-    """
     for param, scenarios in scenario_results_grouped.items():
         scenario_names = [format_label(name) for name in scenarios.keys()]
         objectives = [res["objective_value"] for res in scenarios.values()]
-
         plt.figure(figsize=(8, 5))
-        plt.bar(scenario_names, objectives, color="skyblue", label="Scenarios")
+        plt.bar(scenario_names, objectives, color="skyblue")
         plt.axhline(y=base_results["objective_value"], color="red", linestyle="--", label="Base Case")
-        plt.title(f"{format_group_title(param)}: Objective Value Sensitivity")
+        plt.title(f"{format_group_title(param)}: Objective Sensitivity")
         plt.ylabel("Total Cost [DKK]")
         plt.xticks(rotation=30, ha="right")
         plt.legend()
