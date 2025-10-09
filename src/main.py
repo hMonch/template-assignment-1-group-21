@@ -13,7 +13,7 @@ def main():
     # Paths
     # -------------------------
     project_root = Path(__file__).parent.resolve()
-    question_folder = "question_1a"  # change manually
+    question_folder = "question_1c"  # change manually
     data_path = project_root.parent / "data" / question_folder
     results_path = project_root.parent / "results" / question_folder
     results_path.mkdir(exist_ok=True)
@@ -21,7 +21,7 @@ def main():
     # -------------------------
     # Model choice
     # -------------------------
-    model_choice = 1  # 1–4
+    model_choice = 3  # 1–4
 
     if model_choice == 1:
         model_class = OptModel
@@ -29,15 +29,15 @@ def main():
 
     elif model_choice == 2:
         model_class = OptModelFlex
-        model_kwargs = {"alpha": 1}
+        model_kwargs = {"alpha": 1.5}
 
     elif model_choice == 3:
         model_class = OptModelFlexBattery
-        model_kwargs = {"alpha": 2}
+        model_kwargs = {"alpha": 1.5}
 
     elif model_choice == 4:
         model_class = OptModelFlexBatteryInvestment
-        model_kwargs = {"alpha": 2}
+        model_kwargs = {"alpha": 1.5}
         phi = 1000  # Battery investment cost
 
     else:

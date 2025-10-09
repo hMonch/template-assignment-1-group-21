@@ -26,7 +26,7 @@ def generate_economic_scenarios(base_data, param_name, n_scenarios=4, increase_p
         scenarios.append((f"{param_name}_scenario_{i}", data_scenario))
     return scenarios
 
-def generate_flexibility_scenarios(base_data, n_scenarios=4, factor_profile=1.4):
+def generate_flexibility_scenarios(base_data, n_scenarios=4, factor_profile=2.5):
     """Generate scenarios by scaling dt only (max load removed)."""
     scenarios = []
     for i in range(1, n_scenarios + 1):
@@ -36,7 +36,7 @@ def generate_flexibility_scenarios(base_data, n_scenarios=4, factor_profile=1.4)
         scenarios.append((f"dt_factor_{factor:.3f}", data_scenario))
     return scenarios
 
-def generate_alpha_scenarios(base_data, base_alpha, n_scenarios=4, increase_pct=0.5):
+def generate_alpha_scenarios(base_data, base_alpha, n_scenarios=4, increase_pct=1):
     """Generate alpha values increasing from base_alpha."""
     scenarios = []
     for i in range(1, n_scenarios + 1):
@@ -156,6 +156,59 @@ def plot_pv_and_consumption_scenarios(base_results, scenario_results, scenario_n
         plt.grid(axis="y")
         plt.tight_layout()
         plt.show()
+
+    # --- NEW PLOTS BELOW ---
+
+    # Self-sufficiency over time = (consumption - import) / consumption
+    plt.figure(figsize=(10, 5))
+    base_self_suff = []
+    for t in range(24):
+        cons = base_results["pt"][t] + base_results["pI"][t] - base_results["pE"][t]
+        val = (cons - base_results["pI"][t]) / cons if cons > 0 else 0
+        base_self_suff.append(val)
+    plt.plot(base_self_suff, "--", color="black", label="Base Self-Sufficiency")
+
+    for name, res in scenario_results.items():
+        vals = []
+        for t in range(24):
+            cons = res["pt"][t] + res["pI"][t] - res["pE"][t]
+            val = (cons - res["pI"][t]) / cons if cons > 0 else 0
+            vals.append(val)
+        plt.plot(vals, label=format_label(name))
+    plt.title(f"{format_group_title(scenario_name)}: Self-Sufficiency Over Time")
+    plt.xlabel("Hour")
+    plt.ylabel("Self-Sufficiency [-]")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    # Own-consumption over time = (consumption - import) / PV production
+    plt.figure(figsize=(10, 5))
+    base_own_cons = []
+    for t in range(24):
+        cons = base_results["pt"][t] + base_results["pI"][t] - base_results["pE"][t]
+        pv = base_results["pt"][t]
+        val = (cons - base_results["pI"][t]) / pv if pv > 0 else 0
+        base_own_cons.append(val)
+    plt.plot(base_own_cons, "--", color="black", label="Base Own Consumption")
+
+    for name, res in scenario_results.items():
+        vals = []
+        for t in range(24):
+            cons = res["pt"][t] + res["pI"][t] - res["pE"][t]
+            pv = res["pt"][t]
+            val = (cons - res["pI"][t]) / pv if pv > 0 else 0
+            vals.append(val)
+        plt.plot(vals, label=format_label(name))
+    plt.title(f"{format_group_title(scenario_name)}: Own Consumption Over Time")
+    plt.xlabel("Hour")
+    plt.ylabel("Own Consumption [-]")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 
 def plot_objective_sensitivity(base_results, scenario_results_grouped):
     for param, scenarios in scenario_results_grouped.items():
