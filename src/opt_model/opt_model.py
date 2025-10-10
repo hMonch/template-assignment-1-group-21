@@ -108,8 +108,8 @@ class OptModelFlex:
         self.pE = [self.model.addVar(lb=0, ub=self.data["P_E"], name=f"pE_{t}") for t in range(24)]
         self.rho = [self.model.addVar(lb=0, name=f"rho_{t}") for t in range(24)]
         # Auxiliary variables for absolute value
-        self.x_pos = [self.model.addVar(lb=0, name=f"x_pos_{t}") for t in range(24)]
-        self.x_neg = [self.model.addVar(lb=0, name=f"x_neg_{t}") for t in range(24)]
+        #self.x_pos = [self.model.addVar(lb=0, name=f"x_pos_{t}") for t in range(24)]
+        #self.x_neg = [self.model.addVar(lb=0, name=f"x_neg_{t}") for t in range(24)]
 
     def _build_constraints(self):
         for t in range(24):
@@ -125,17 +125,28 @@ class OptModelFlex:
                 name=f"hourly_max_load_{t}"
             )
 
-            # Linearize absolute deviation for rho
-            # x = actual load - reference load
+            #Up and down maximum deviation constraints
             self.model.addConstr(
-                (self.pt[t] + self.pI[t] - self.pE[t]) - self.data["dt"][t] == self.x_pos[t] - self.x_neg[t],
-                name=f"x_decomp_{t}"
+                self.pt[t] + self.pI[t] - self.pE[t] >= self.data["dt"][t]*(1-self.rho[t]),
+                name=f"hourly_down_deviation_{t}"
             )
-            # Define rho as absolute fraction of deviation
+
             self.model.addConstr(
-                self.rho[t] == (self.x_pos[t] + self.x_neg[t]) / self.data["dt"][t],
-                name=f"rho_def_{t}"
+                self.pt[t] + self.pI[t] - self.pE[t] <= self.data["dt"][t]*(1+self.rho[t]),
+                name=f"hourly_up_deviation_{t}"
             )
+
+            # # Linearize absolute deviation for rho
+            # # x = actual load - reference load
+            # self.model.addConstr(
+            #     (self.pt[t] + self.pI[t] - self.pE[t]) - self.data["dt"][t] == self.x_pos[t] - self.x_neg[t],
+            #     name=f"x_decomp_{t}"
+            # )
+            # # Define rho as absolute fraction of deviation
+            # self.model.addConstr(
+            #     self.rho[t] == (self.x_pos[t] + self.x_neg[t]) / self.data["dt"][t],
+            #     name=f"rho_def_{t}"
+            # )
 
     def _build_objective_function(self):
         # Minimize cost + penalty for shifting
@@ -206,8 +217,8 @@ class OptModelFlexBattery:
         self.p_dis = [self.model.addVar(lb=0, ub=self.data["P_dis"], name=f"p_dis_{t}") for t in range(24)]
         self.E = [self.model.addVar(lb=0, ub=self.data["C"], name=f"E_{t}") for t in range(25)]  # 0–24 SOC
         self.rho = [self.model.addVar(lb=0, name=f"rho_{t}") for t in range(24)]
-        self.x_pos = [self.model.addVar(lb=0, name=f"x_pos_{t}") for t in range(24)]
-        self.x_neg = [self.model.addVar(lb=0, name=f"x_neg_{t}") for t in range(24)]
+        # self.x_pos = [self.model.addVar(lb=0, name=f"x_pos_{t}") for t in range(24)]
+        # self.x_neg = [self.model.addVar(lb=0, name=f"x_neg_{t}") for t in range(24)]
 
     # -------------------------------------------------------------------------
     def _build_constraints(self):
@@ -238,22 +249,33 @@ class OptModelFlexBattery:
                 name=f"hourly_max_load_{t}"
             )
 
+            # self.model.addConstr(
+            #     self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t] >= 0,
+            #     name=f"positive_consumption_{t}"
+            # )
+
+            #Up and down maximum deviation constraints
             self.model.addConstr(
-                self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t] >= 0,
-                name=f"positive_consumption_{t}"
+                self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t] >= self.data["dt"][t]*(1-self.rho[t]),
+                name=f"hourly_down_deviation_{t}"
             )
 
-            # --- Linearize absolute deviation for rho (modified to include battery) ---
             self.model.addConstr(
-                (self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t]) - self.data["dt"][t]
-                == self.x_pos[t] - self.x_neg[t],
-                name=f"x_decomp_{t}"
+                self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t]<= self.data["dt"][t]*(1+self.rho[t]),
+                name=f"hourly_up_deviation_{t}"
             )
 
-            self.model.addConstr(
-                self.rho[t] == (self.x_pos[t] + self.x_neg[t]) / self.data["dt"][t],
-                name=f"rho_def_{t}"
-            )
+            # # --- Linearize absolute deviation for rho (modified to include battery) ---
+            # self.model.addConstr(
+            #     (self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t]) - self.data["dt"][t]
+            #     == self.x_pos[t] - self.x_neg[t],
+            #     name=f"x_decomp_{t}"
+            # )
+
+            # self.model.addConstr(
+            #     self.rho[t] == (self.x_pos[t] + self.x_neg[t]) / self.data["dt"][t],
+            #     name=f"rho_def_{t}"
+            # )
 
     # -------------------------------------------------------------------------
     def _build_objective_function(self):
@@ -336,8 +358,8 @@ class OptModelFlexBatteryInvestment:
         self.p_dis = [self.model.addVar(lb=0, name=f"p_dis_{t}") for t in range(24)]
         self.E = [self.model.addVar(lb=0, name=f"E_{t}") for t in range(25)]
         self.rho = [self.model.addVar(lb=0, name=f"rho_{t}") for t in range(24)]
-        self.x_pos = [self.model.addVar(lb=0, name=f"x_pos_{t}") for t in range(24)]
-        self.x_neg = [self.model.addVar(lb=0, name=f"x_neg_{t}") for t in range(24)]
+        # self.x_pos = [self.model.addVar(lb=0, name=f"x_pos_{t}") for t in range(24)]
+        # self.x_neg = [self.model.addVar(lb=0, name=f"x_neg_{t}") for t in range(24)]
         self.k = self.model.addVar(lb=0, ub=100, name="k")
 
 
@@ -368,9 +390,20 @@ class OptModelFlexBatteryInvestment:
                 name=f"hourly_max_load_{t}"
             )
 
+            # self.model.addConstr(
+            #     self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t] >= 0,
+            #     name=f"positive_consumption_{t}"
+            # )
+            
+            # Maximum up and down regulation possible for demand
             self.model.addConstr(
-                self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t] >= 0,
-                name=f"positive_consumption_{t}"
+                self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t] >= self.data["dt"][t]*(1-self.rho[t]),
+                name=f"hourly_down_deviation_{t}"
+            )
+
+            self.model.addConstr(
+                self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t]<= self.data["dt"][t]*(1+self.rho[t]),
+                name=f"hourly_up_deviation_{t}"
             )
 
             # Battery power limits scaled by k
@@ -378,16 +411,16 @@ class OptModelFlexBatteryInvestment:
             self.model.addConstr(self.p_dis[t] / eta_dis <= self.k * self.data["P_dis"], name=f"discharge_limit_{t}")
             self.model.addConstr(self.E[t] <= self.k * C, name=f"soc_capacity_{t}")
 
-            # Linearize absolute deviation (same as before)
-            self.model.addConstr(
-                (self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t]) - self.data["dt"][t]
-                == self.x_pos[t] - self.x_neg[t],
-                name=f"x_decomp_{t}"
-            )
-            self.model.addConstr(
-                self.rho[t] == (self.x_pos[t] + self.x_neg[t]) / self.data["dt"][t],
-                name=f"rho_def_{t}"
-            )
+            # # Linearize absolute deviation (same as before)
+            # self.model.addConstr(
+            #     (self.pt[t] + self.pI[t] - self.pE[t] + self.p_dis[t] - self.p_ch[t]) - self.data["dt"][t]
+            #     == self.x_pos[t] - self.x_neg[t],
+            #     name=f"x_decomp_{t}"
+            # )
+            # self.model.addConstr(
+            #     self.rho[t] == (self.x_pos[t] + self.x_neg[t]) / self.data["dt"][t],
+            #     name=f"rho_def_{t}"
+            # )
 
     # -------------------------------------------------------------------------
     def _build_objective_function(self):

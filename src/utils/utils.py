@@ -38,3 +38,16 @@ def save_model_results():
 def plot_data():
     """Placeholder for plot_data function."""
     pass
+
+def create_demand_profiles(type_of_demand):
+    total_demand = 24 #KWh over the day
+    demand_profiles = {}
+    for type in type_of_demand:
+        if type == 'industrial':
+            demand = [1 for i in range(24)]
+            demand_profiles[type]=demand
+        if type == 'office':
+            demand = [0,0,0,0,0,0,0,0.25,0.5,0.75,1,1,0.5,0.5,1,1,1,0.75,0.5,0.5,0,0,0,0]
+            s = sum(demand)
+            demand_profiles[type]=[d*total_demand/s for d in demand]
+    return demand_profiles

@@ -7,6 +7,7 @@ from src.opt_model.opt_model import (
     OptModelFlexBatteryInvestment
 )
 from src import sensitivity
+from src.utils.utils import create_demand_profiles
 
 def main():
     # -------------------------
@@ -38,7 +39,7 @@ def main():
     elif model_choice == 4:
         model_class = OptModelFlexBatteryInvestment
         model_kwargs = {"alpha": 1.5}
-        phi = 1000  # Battery investment cost
+        phi = 7000  #DKK/kWh Battery investment cost
 
     else:
         raise ValueError("Invalid model_choice (1–4)")
@@ -86,9 +87,72 @@ def main():
             model = model_class(runner.data, alpha=alpha_val)
             model.run()
             scenario_results_grouped["Alpha"][name] = model.results
+        
+        #Demand scenarios
+        d_profiles = create_demand_profiles(['industrial', 'office'])
+        demand_scenarios = sensitivity.generate_demand_profiles_scenarios(runner.data, demand_profiles=d_profiles)
+        scenario_results_grouped["Demand type"] = {}
+        for name, data in demand_scenarios:
+            model = model_class(data, alpha=model_kwargs["alpha"])
+            model.run()
+            scenario_results_grouped["Demand type"][name] = model.results
 
     # -------- Model 3 & 4 --------
     elif model_choice in [3, 4]:
+        #Question 1.c, main flexibility analysis
+        merge_scenario_results = {}
+
+        alpha_list = [0.5,1.5,3]
+
+        d_profiles = create_demand_profiles(['industrial', 'office'])
+
+        model_2 = OptModelFlex
+        model_3 = OptModelFlexBattery
+        for alpha in alpha_list:
+            merge_scenario_results[alpha] = {}
+
+            demand_scenarios = sensitivity.generate_demand_profiles_scenarios(runner.data, demand_profiles=d_profiles)
+
+            for name, data in demand_scenarios:
+                merge_scenario_results[alpha][name] = {'No_Battery': None, 'Battery': None}
+                model2 = model_2(data, alpha)
+                model3 = model_3(data, alpha)
+                model2.run()
+                model3.run()
+
+                merge_scenario_results[alpha][name]["No_Battery"] = model2.results
+                merge_scenario_results[alpha][name]["Battery"] = model3.results
+        
+        sensitivity.plot_1c_objfunc_sensitivity_demand(merge_scenario_results)
+        #------------------------------------------------------------------------------#
+
+
+        base_alpha = model_kwargs["alpha"]
+        alpha_scenarios = sensitivity.generate_alpha_scenarios(runner.data, base_alpha, alpha_list=[0.5, 1.5, 3])
+        scenario_results_grouped["AlphaB"] = {}
+        model_2 = OptModelFlex
+        model_3 = OptModelFlexBattery
+        for name, alpha_val in alpha_scenarios:
+            model2 = model_2(runner.data, alpha_val)
+            model3 = model_3(runner.data, alpha_val)
+            model2.run()
+            model3.run()
+
+            if alpha_val not in scenario_results_grouped["AlphaB"]:
+                scenario_results_grouped["AlphaB"][alpha_val] = {}
+            
+            scenario_results_grouped["AlphaB"][alpha_val]["No_Battery"] = model2.results
+            scenario_results_grouped["AlphaB"][alpha_val]["Battery"] = model3.results
+        #We plot the graphs of interests
+        sensitivity.plot_1c_objfunc_sensitivity(scenario_results_grouped)
+
+        #--------------------------------------------------------------------------------------------#
+
+        #We reinitialize the dic with scenario results
+        scenario_results_grouped={}
+
+
+
         # Flexibility (dt) scenarios
         flex_scenarios = sensitivity.generate_flexibility_scenarios(runner.data)
         if model_choice == 4:
@@ -125,8 +189,12 @@ def main():
     sensitivity.plot_objective_sensitivity(base_results, scenario_results_grouped)
     # PV and consumption
     for param_name, scenario_results in scenario_results_grouped.items():
-        plot_k = model_choice == 4 and param_name in ["Flexibility", "F_E", "F_I", "lambda_t", "Alpha"]
-        sensitivity.plot_pv_and_consumption_scenarios(base_results, scenario_results, param_name, plot_k=plot_k)
+        if param_name == "Demand type":
+            sensitivity.plot_comparison_demand_consumption(runner.data, d_profiles, base_results, scenario_results, param_name)
+        plot_k = model_choice == 4 and param_name in ["Flexibility", "F_E", "F_I", "lambda_t", "Alpha", "Demand type"]
+        #sensitivity.plot_pv_and_consumption_scenarios(base_results, scenario_results, param_name, plot_k=plot_k)
+        if model_choice >= 3:
+            sensitivity.plot_oc_ss(scenario_results, param_name)
 
 if __name__ == "__main__":
     main()
