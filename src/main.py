@@ -219,7 +219,7 @@ def main():
         if param_name == "Demand type":
             sensitivity.plot_comparison_demand_consumption(runner.data, d_profiles, base_results, scenario_results, param_name)
         plot_k = model_choice == 4 and param_name in ["Flexibility", "F_E", "F_I", "lambda_t", "Alpha", "Demand type"]
-        #sensitivity.plot_pv_and_consumption_scenarios(base_results, runner.data, scenario_results, param_name, plot_k=plot_k)
+        sensitivity.plot_pv_and_consumption_scenarios(base_results, runner.data, scenario_results, param_name, plot_k=plot_k)
 
 if __name__ == "__main__":
     main()
