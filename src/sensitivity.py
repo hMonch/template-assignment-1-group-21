@@ -12,9 +12,7 @@ from src.opt_model.opt_model import (
 # Scenario generators
 # -------------------------
 
-def generate_economic_scenarios(base_data, param_name
-                                #, n_scenarios=4, increase_pct=0.5
-                                ):
+def generate_economic_scenarios(base_data, param_name):
     scenarios = []
     if param_name == "lambda_t":
         #List of multiplying factor for lambda
@@ -31,17 +29,6 @@ def generate_economic_scenarios(base_data, param_name
             data_scenario[param_name] = base_data[param_name] * tariff_factor[i]
             scenarios.append((f"{param_name}_scenario_{tariff_factor[i]}", data_scenario))
 
-
-    # # for i in range(1, n_scenarios + 1):
-    # #     factor = 1 + increase_pct * i
-    # #     data_scenario = deepcopy(base_data)
-
-    # #     if param_name == "lambda_t":
-    # #         data_scenario["lambda_t"] = [x * factor for x in base_data["lambda_t"]]
-    # #     else:
-    # #         data_scenario[param_name] = base_data[param_name] * factor
-
-    # #     scenarios.append((f"{param_name}_scenario_{i}", data_scenario))
     return scenarios
 
 
@@ -58,19 +45,16 @@ def generate_demand_profiles_scenarios(base_data, demand_profiles):
     return scenarios
     
 
-def generate_flexibility_scenarios(base_data, n_scenarios=4, factor_profile=2.5):
+def generate_flexibility_scenarios(base_data, factor = [1,2,3,5]):
     """Generate scenarios by scaling dt only (max load removed)."""
     scenarios = []
-    for i in range(1, n_scenarios + 1):
-        factor = 1 + (factor_profile - 1) * i / n_scenarios
+    for i in range(len(factor)):
         data_scenario = deepcopy(base_data)
-        data_scenario["dt"] = [x * factor for x in base_data["dt"]]
-        scenarios.append((f"dt_factor_{factor:.3f}", data_scenario))
+        data_scenario["dt"] = [x * factor[i] for x in base_data["dt"]]
+        scenarios.append((f"dt_factor_{factor[i]:.1f}", data_scenario))
     return scenarios
 
-def generate_alpha_scenarios(base_data, base_alpha, alpha_list = None
-                             #, n_scenarios=4, increase_pct=1
-                             ):
+def generate_alpha_scenarios(base_data, base_alpha, alpha_list = None ):
     """Generate alpha values increasing from base_alpha."""
     scenarios = []
     if alpha_list == None:
@@ -80,9 +64,7 @@ def generate_alpha_scenarios(base_data, base_alpha, alpha_list = None
     for i in range(len(alpha_vals)):
         alpha_val = alpha_vals[i]
         scenarios.append((f"alpha_{alpha_val:.2f}", alpha_val))
-    # for i in range(1, n_scenarios + 1):
-    #     alpha_val = base_alpha * (1 + increase_pct * i)
-    #     scenarios.append((f"alpha_{alpha_val:.2f}", alpha_val))
+    
     return scenarios
 
 # -------------------------
@@ -110,15 +92,15 @@ def run_scenarios(scenarios, model_class, alpha=None, phi=None):
 def format_label(name):
     if "F_E" in name:
         idx = float(name.split("_")[-1])
-        factor = idx #1 + 0.5 * idx
+        factor = idx 
         return f"Export fee ×{factor:.1f}"
     elif "F_I" in name:
         idx = float(name.split("_")[-1])
-        factor = idx #1 + 0.5 * idx
+        factor = idx 
         return f"Import fee ×{factor:.1f}"
     elif "lambda_t" in name:
         idx = float(name.split("_")[-1])
-        factor = idx #1 + 0.5 * idx
+        factor = idx 
         return f"Price ×{factor:.1f}"
     elif "alpha" in name:
         val = float(name.split("_")[-1])
@@ -143,15 +125,23 @@ def format_group_title(param_name):
 # Plotting
 # -------------------------
 
-def plot_base_case(base_results):
-    plt.figure(figsize=(12, 6))
-    plt.plot(base_results["pt"], label="PV Production")
-    plt.plot(base_results["pI"], label="Grid Import")
-    plt.plot(base_results["pE"], label="Grid Export")
-    plt.title("Base Case: Hourly PV, Import, Export")
-    plt.xlabel("Hour")
-    plt.ylabel("Power [kW]")
-    plt.legend()
+def plot_base_case(base_results, data, model_choice):
+    fig, ax1 = plt.subplots()
+    ax1.plot(base_results["pt"], label="PV Production", color = 'yellow')
+    ax1.plot(base_results["pI"], label="Grid Import", color = 'blue')
+    ax1.plot(base_results["pE"], label="Grid Export", color = 'green')
+    if model_choice>2:
+        ax2 = ax1.twinx()
+        soc = [E / data['C'] for E in base_results["E"]]
+        ax2.plot(soc, label = "SOC battery", color = 'tab:orange')
+        ax2.fill_between(range(len(soc)), soc, 0, color='tab:orange', alpha=0.1)
+        ax2.set_ylim(0, max(soc) * 1.1)
+        ax2.set_ylabel("State of charge")
+        ax2.legend()
+    fig.suptitle("Base Case: Hourly PV, Import, Export, SOC")
+    ax1.set_xlabel("Hour")
+    ax1.set_ylabel("Power [kW]")
+    ax1.legend(loc='upper left')
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -186,7 +176,7 @@ def plot_comparison_demand_consumption(base_data, scenario_data, base_results, s
     plt.show()
 
 
-def plot_pv_and_consumption_scenarios(base_results, scenario_results, scenario_name, plot_k=False):
+def plot_pv_and_consumption_scenarios(base_results, data, scenario_results, scenario_name, plot_k=False):
     # PV Production
     plt.figure(figsize=(10, 5))
     plt.plot(base_results["pt"], "--", color="black", label="Base PV")
@@ -218,11 +208,11 @@ def plot_pv_and_consumption_scenarios(base_results, scenario_results, scenario_n
     # Plot battery k if requested
     if plot_k:
         plt.figure(figsize=(8, 5))
-        ks = [res["k"] for res in scenario_results.values()]
+        ks = [res["k"]*data['C'] for res in scenario_results.values()]
         labels = [format_label(name) for name in scenario_results.keys()]
         plt.bar(labels, ks, color="orange")
-        plt.title(f"{format_group_title(scenario_name)}: Battery Size k")
-        plt.ylabel("k [kWh]")
+        plt.title(f"{format_group_title(scenario_name)}: Battery Size k*C")
+        plt.ylabel("Storage [kWh]")
         plt.xticks(rotation=30, ha="right")
         plt.grid(axis="y")
         plt.tight_layout()
@@ -402,38 +392,36 @@ def plot_1c_objfunc_sensitivity_demand(merged_scenario_results):
     plt.tight_layout()
     plt.show()
 
-# We modify the calculation of oc and ss when taking into account battery
-def plot_oc_ss(scenario_results, param_name):
-    OC = []
-    SS = []
-    scenario_names = [format_label(name) for name in scenario_results.keys()]
-    for name, res in scenario_results.items():
-        cons = 0
-        pv = 0
-        pv_cons = 0
-        imp = 0
-        if param_name=='lambda_t':
-            print(res)
-        for t in range(24):
-            cons += res["pt"][t] + res["pI"][t] - res["pE"][t] - res["p_ch"][t] + res["p_dis"][t]
-            pv += res["pt"][t]
-            imp += res["pI"][t]
-            pv_cons += res["pt"][t] - res["pE"][t]
-        ss = (cons-imp)/cons if cons>0 else 1
-        oc = (cons-imp)/pv if pv>0 else 0
-        OC.append(oc)
-        SS.append(ss)
-    
-    x = np.arange(len(scenario_names))
-    width = 0.35
+def plotk_2b(scenario_results, data, factor_list):
+     demand_types = list(scenario_results["Demand type"].keys())  # Ex: ['base', 'industrial', 'office']
+     n_demand_types = len(demand_types)
+     n_factors = len(factor_list)
 
-    plt.bar(x - width/2, OC, width=width, color='orange', label='OC')
-    plt.bar(x + width/2, SS, width=width, color='skyblue', label='SS')
-    plt.title(f"{format_group_title(param_name)}: Own Consumption and Self-Sufficiency over Sensitivity scenarios")
-    plt.xlabel("Scenario")
-    plt.ylabel("Own Consumption [-]")
-    plt.xticks(x, scenario_names) 
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
+     width = 0.2
+     plt.figure(figsize=(12, 6))
+     x = np.arange(n_factors) 
+
+     colors = ['blue', 'green', 'red']
+
+     for i, demand_type in enumerate(demand_types):
+         ks = []
+         for f in factor_list:
+             if f in scenario_results["Demand type"][demand_type]:
+                
+                 k_value = scenario_results["Demand type"][demand_type][f]["k"] * data['C']
+                 ks.append(k_value)
+             else:
+                 ks.append(0)  
+
+        
+         plt.bar(x + i * width, ks, width=width, color=colors[i], label=f"{format_label(demand_type)}", alpha=0.7)
+
+    
+     plt.title("Battery Size $k \\times C$ by Demand Type and Demand Factor")
+     plt.xlabel("Demand Factor $f$")
+     plt.ylabel("Storage installed[kWh]")
+     plt.xticks(x + (n_demand_types - 1) * width / 2, factor_list)  
+     plt.legend()
+     plt.grid(axis="y")
+     plt.tight_layout()
+     plt.show()

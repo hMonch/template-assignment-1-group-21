@@ -1,4 +1,5 @@
 from pathlib import Path
+import numpy as np
 from src.runner.runner import Runner
 from src.opt_model.opt_model import (
     OptModel,
@@ -22,7 +23,7 @@ def main():
     # -------------------------
     # Model choice
     # -------------------------
-    model_choice = 3  # 1–4
+    model_choice = 4 # 1–4
 
     if model_choice == 1:
         model_class = OptModel
@@ -39,7 +40,7 @@ def main():
     elif model_choice == 4:
         model_class = OptModelFlexBatteryInvestment
         model_kwargs = {"alpha": 1.5}
-        phi = 7000  #DKK/kWh Battery investment cost
+        phi = 5000  #DKK/kWh Battery investment cost
 
     else:
         raise ValueError("Invalid model_choice (1–4)")
@@ -124,6 +125,32 @@ def main():
                 merge_scenario_results[alpha][name]["Battery"] = model3.results
         
         sensitivity.plot_1c_objfunc_sensitivity_demand(merge_scenario_results)
+
+         #Question 2.b Demand scenarios
+        scenario_results_demand = {}
+        if model_choice == 4:
+             d_profiles = create_demand_profiles(['industrial', 'office'])
+             demand_scenarios = sensitivity.generate_demand_profiles_scenarios(runner.data, demand_profiles=d_profiles)
+             scenario_results_demand["Demand type"] = {}
+             factor = [0.5,1,2,4,8]
+
+             for name, data in demand_scenarios:
+                 if name not in scenario_results_demand["Demand type"]:
+                     scenario_results_demand["Demand type"][name] = {}
+
+                 flexibility_scenarios = sensitivity.generate_flexibility_scenarios(data, factor)
+
+                 for scenario_name, scaled_data in flexibility_scenarios:
+                     f = float(scenario_name.split("_")[-1])
+
+                     print('charge totale:',np.sum(scaled_data["dt"]))
+
+                     model = model_class(scaled_data, alpha=1000, phi=2500)
+                     model.run()
+
+                     scenario_results_demand["Demand type"][name][f] = model.results
+
+             sensitivity.plotk_2b(scenario_results_demand, runner.data, factor)
         #------------------------------------------------------------------------------#
 
 
@@ -184,7 +211,7 @@ def main():
     # Plotting
     # -------------------------
     # Base case
-    sensitivity.plot_base_case(base_results)
+    sensitivity.plot_base_case(base_results, runner.data, model_choice)
     # Objective sensitivity
     sensitivity.plot_objective_sensitivity(base_results, scenario_results_grouped)
     # PV and consumption
@@ -192,9 +219,7 @@ def main():
         if param_name == "Demand type":
             sensitivity.plot_comparison_demand_consumption(runner.data, d_profiles, base_results, scenario_results, param_name)
         plot_k = model_choice == 4 and param_name in ["Flexibility", "F_E", "F_I", "lambda_t", "Alpha", "Demand type"]
-        #sensitivity.plot_pv_and_consumption_scenarios(base_results, scenario_results, param_name, plot_k=plot_k)
-        if model_choice >= 3:
-            sensitivity.plot_oc_ss(scenario_results, param_name)
+        #sensitivity.plot_pv_and_consumption_scenarios(base_results, runner.data, scenario_results, param_name, plot_k=plot_k)
 
 if __name__ == "__main__":
     main()
